@@ -1,0 +1,10 @@
+version: '3'
+services:
+  php_service:
+    container_name: php_
+    build:
+      context: './docker/'
+    volumes:
+      - './app:/var/www/html'
+    ports:
+      - '8082:80'
