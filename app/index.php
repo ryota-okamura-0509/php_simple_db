@@ -1,12 +1,16 @@
 <?php
 
 class InputBuffer {
-    public $buffer;
+    public string $buffer;
 
     public function __construct() {
         $this->buffer = "";
     }
 }
+
+class Statement {
+    public PrepareResult $type;
+}   
 
 enum MetaCommandResult {
     case META_COMMAND_SUCCESS;
