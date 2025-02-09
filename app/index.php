@@ -45,7 +45,7 @@ function read_input(InputBuffer $inputBuffer) {
 function do_meta_command($inputBuffer): MetaCommandResult {
     if ($inputBuffer->buffer === ".exit") {
         echo "Goodbye!\n";
-        exit(MetaCommandResult::META_COMMAND_SUCCESS);
+        exit(1);
     }
     return MetaCommandResult::META_COMMAND_UNRECOGNIZED_COMMAND;
 }
