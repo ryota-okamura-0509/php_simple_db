@@ -9,7 +9,7 @@ class InputBuffer {
 }
 
 class Statement {
-    public PrepareResult $type;
+    public StatementType | null $type;
 }   
 
 enum MetaCommandResult {
@@ -20,6 +20,11 @@ enum MetaCommandResult {
 enum PrepareResult {
     case PREPARE_SUCCESS;
     case PREPARE_UNRECOGNIZED_STATEMENT;
+}
+
+enum StatementType {
+    case INSERT;
+    case SELECT;
 }
 
 function print_prompt() {
@@ -45,6 +50,31 @@ function do_meta_command($inputBuffer): MetaCommandResult {
     return MetaCommandResult::META_COMMAND_UNRECOGNIZED_COMMAND;
 }
 
+function prepare_statement(InputBuffer $inputBuffer, Statement $statement): PrepareResult {
+    if (str_starts_with($inputBuffer->buffer, "insert")) {
+        $statement->type = StatementType::INSERT;
+        return PrepareResult::PREPARE_SUCCESS;
+    }
+    if (str_starts_with($inputBuffer->buffer, "select")) {
+        $statement->type = StatementType::SELECT;
+        return PrepareResult::PREPARE_SUCCESS;
+    }
+    return PrepareResult::PREPARE_UNRECOGNIZED_STATEMENT;
+}
+
+function execute_statement(Statement $statement) {
+    switch ($statement->type) {
+        case StatementType::INSERT:
+            echo "This is where we would do an insert.\n";
+            break;
+        case StatementType::SELECT:
+            echo "This is where we would do a select.\n";
+            break;
+        default:
+            break;
+    }
+}
+
 $inputBuffer = new InputBuffer();
 while (true) {
     print_prompt();
@@ -61,4 +91,13 @@ while (true) {
                 break;
         }
     }
+
+    $statement = new Statement();
+    if(prepare_statement($inputBuffer, $statement) === PrepareResult::PREPARE_UNRECOGNIZED_STATEMENT) {
+        echo "Unrecognized keyword at start of '{$inputBuffer->buffer}'.\n";
+        continue;
+    }
+
+    execute_statement($statement);
+    echo "Executed.\n";
 }
