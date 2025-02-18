@@ -1,9 +1,13 @@
 <?php
 
-const PAGE_SIZE = 4096;
-const TABLE_MAX_PAGES = 100;
-const ROWS_PER_PAGE = PAGE_SIZE / ROW_SIZE;
-const TABLE_MAX_ROWS = ROWS_PER_PAGE * TABLE_MAX_PAGES;
+define("PAGE_SIZE", 4096);
+define("USERNAME_SIZE", 32);
+define("EMAIL_SIZE", 255);
+define("ID_SIZE", 4);
+define("ROW_SIZE", USERNAME_SIZE + EMAIL_SIZE + ID_SIZE);
+define("ROWS_PER_PAGE", PAGE_SIZE / ROW_SIZE);
+define("TABLE_MAX_PAGES", 100);
+define("TABLE_MAX_ROWS", ROWS_PER_PAGE * TABLE_MAX_PAGES);
 
 class InputBuffer {
     public string $buffer;
@@ -26,8 +30,8 @@ class Row {
 }
 
 class Table {
-    public int $num_rows;
-    public array $pages;
+    public int $num_rows = 0;
+    public array $pages = [];
 }
 
 class Statement {
@@ -44,6 +48,8 @@ enum PrepareResult {
     case PREPARE_SUCCESS;
     case PREPARE_UNRECOGNIZED_STATEMENT;
     case PREPARE_SYSTEM_ERROR;
+    case PREPARE_EXECUTE_TABLE_FULL;
+    case PREPARE_EXECUTE_SUCCESS;
 }
 
 enum StatementType {
@@ -78,12 +84,8 @@ function prepare_statement(InputBuffer $inputBuffer, Statement $statement): Prep
     if (str_starts_with($inputBuffer->buffer, "insert")) {
         $statement->type = StatementType::INSERT;
         $pattern = '/^insert (\d+) (\S+) (\S+)$/';
-        if (preg_match($pattern, $$inputBuffer->buffer, $matches)) {
-            $statement = [
-                'id' => (int)$matches[1],
-                'username' => $matches[2],
-                'email' => $matches[3]
-            ];
+        if (preg_match($pattern, $inputBuffer->buffer, $matches)) {
+            $statement->row = new Row((int)$matches[1], $matches[2], $matches[3]);
             echo "Parsed successfully: ";
             print_r($statement);
         } else {
@@ -98,35 +100,68 @@ function prepare_statement(InputBuffer $inputBuffer, Statement $statement): Prep
     return PrepareResult::PREPARE_UNRECOGNIZED_STATEMENT;
 }
 
-function execute_statement(Statement $statement) {
+function execute_statement(Statement $statement, Table $table) {
     switch ($statement->type) {
         case StatementType::INSERT:
-            echo "This is where we would do an insert.\n";
+            return execute_insert($statement, $table);
             break;
         case StatementType::SELECT:
-            echo "This is where we would do a select.\n";
+            return execute_select($table);
             break;
         default:
             break;
     }
 }
 
-function serialize_row(Row $source, string $destination) {
+function serialize_row(Row $source) {
     // pack を使い、バイナリデータに変換
     return pack(
-        "L A" . self::USERNAME_SIZE . " A" . self::EMAIL_SIZE,
+        "LA" . USERNAME_SIZE . "A" . EMAIL_SIZE,
         $source->id,
-        str_pad($source->username, self::USERNAME_SIZE, "\0"),
-        str_pad($source->email, self::EMAIL_SIZE, "\0")
+        str_pad($source->username, USERNAME_SIZE, "\0"),
+        str_pad($source->email, EMAIL_SIZE, "\0")
     );
 }
 
 function deserialize_row(string $source): Row {
-    $data = unpack("Lid/A" . self::COLUMN_USERNAME_SIZE . "username/A" . self::COLUMN_EMAIL_SIZE . "email", $source);
+    $data = unpack("Lid/A" . USERNAME_SIZE . "username/A" . EMAIL_SIZE . "email", $source);
     return new Row($data['id'], rtrim($data['username'], "\0"), rtrim($data['email'], "\0"));
 }
 
+function row_slot(Table $table, int $row_num): int {
+    $page_num = $row_num / ROWS_PER_PAGE;
+    $page = $table->pages[$page_num];
+    if ($page === null) {
+        // ページが存在しない場合は新規作成
+        $page = $table->pages[$page_num] = str_repeat("\0", PAGE_SIZE);
+    }
+    $row_offset = $row_num % ROWS_PER_PAGE;
+    $byte_offset = $row_offset * ROW_SIZE;
+    return count($page) + $byte_offset;
+}
+
+function execute_insert(Statement $statement, Table $table): PrepareResult {
+    if ($table->num_rows >= TABLE_MAX_ROWS) {
+        echo "Table full.\n";
+        return PrepareResult::PREPARE_EXECUTE_TABLE_FULL;
+    }
+
+    $serialized_row = serialize_row($statement->row);
+    $table->pages[intdiv($table->num_rows, ROWS_PER_PAGE)][$table->num_rows % ROWS_PER_PAGE] = $serialized_row;
+    $table->num_rows += 1;
+    return PrepareResult::PREPARE_EXECUTE_SUCCESS;
+}
+
+function execute_select(Table $table) {
+    for ($i = 0; $i < $table->num_rows; $i++) {
+        $row = deserialize_row(row_slot($table, $i));
+        echo "{$row->id} {$row->username} {$row->email}\n";
+    }
+    PrepareResult::PREPARE_EXECUTE_SUCCESS;
+}
+
 $inputBuffer = new InputBuffer();
+$table = new Table();
 while (true) {
     print_prompt();
     $input = read_input($inputBuffer);
@@ -144,11 +179,20 @@ while (true) {
     }
 
     $statement = new Statement();
-    if(prepare_statement($inputBuffer, $statement) === PrepareResult::PREPARE_UNRECOGNIZED_STATEMENT) {
-        echo "Unrecognized keyword at start of '{$inputBuffer->buffer}'.\n";
-        continue;
+    switch(prepare_statement($inputBuffer, $statement)) {
+        case PrepareResult::PREPARE_SUCCESS:
+            break;
+        case PrepareResult::PREPARE_UNRECOGNIZED_STATEMENT:
+            echo "Unrecognized keyword at start of '{$inputBuffer->buffer}'.\n";
+            break;
+        case PrepareResult::PREPARE_SYSTEM_ERROR:
+            echo "System error.\n";
+            break;
+        default:
+            break;
     }
 
-    execute_statement($statement);
+
+    execute_statement($statement,$table);
     echo "Executed.\n";
 }
