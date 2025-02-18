@@ -8,8 +8,21 @@ class InputBuffer {
     }
 }
 
+class Row {
+    public int $id;
+    public string $username;
+    public string $email;
+
+    public function __construct(int $id, string $username, string $email) {
+        $this->id = $id;
+        $this->username = $username;
+        $this->email = $email;
+    }
+}
+
 class Statement {
     public StatementType | null $type;
+    public Row | null $row;
 }   
 
 enum MetaCommandResult {
@@ -20,6 +33,7 @@ enum MetaCommandResult {
 enum PrepareResult {
     case PREPARE_SUCCESS;
     case PREPARE_UNRECOGNIZED_STATEMENT;
+    case PREPARE_SYSTEM_ERROR;
 }
 
 enum StatementType {
@@ -53,6 +67,18 @@ function do_meta_command($inputBuffer): MetaCommandResult {
 function prepare_statement(InputBuffer $inputBuffer, Statement $statement): PrepareResult {
     if (str_starts_with($inputBuffer->buffer, "insert")) {
         $statement->type = StatementType::INSERT;
+        $pattern = '/^insert (\d+) (\S+) (\S+)$/';
+        if (preg_match($pattern, $$inputBuffer->buffer, $matches)) {
+            $statement = [
+                'id' => (int)$matches[1],
+                'username' => $matches[2],
+                'email' => $matches[3]
+            ];
+            echo "Parsed successfully: ";
+            print_r($statement);
+        } else {
+            return PrepareResult::PREPARE_SYSTEM_ERROR;
+        }
         return PrepareResult::PREPARE_SUCCESS;
     }
     if (str_starts_with($inputBuffer->buffer, "select")) {
