@@ -1,5 +1,10 @@
 <?php
 
+const PAGE_SIZE = 4096;
+const TABLE_MAX_PAGES = 100;
+const ROWS_PER_PAGE = PAGE_SIZE / ROW_SIZE;
+const TABLE_MAX_ROWS = ROWS_PER_PAGE * TABLE_MAX_PAGES;
+
 class InputBuffer {
     public string $buffer;
 
@@ -18,6 +23,11 @@ class Row {
         $this->username = $username;
         $this->email = $email;
     }
+}
+
+class Table {
+    public int $num_rows;
+    public array $pages;
 }
 
 class Statement {
@@ -99,6 +109,10 @@ function execute_statement(Statement $statement) {
         default:
             break;
     }
+}
+
+function serialize_row(Row $source, string $destination) {
+    pack("Ia32a256", $source->id, $source->username, $source->email);
 }
 
 $inputBuffer = new InputBuffer();
