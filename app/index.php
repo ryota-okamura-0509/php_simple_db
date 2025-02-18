@@ -112,7 +112,18 @@ function execute_statement(Statement $statement) {
 }
 
 function serialize_row(Row $source, string $destination) {
-    pack("Ia32a256", $source->id, $source->username, $source->email);
+    // pack を使い、バイナリデータに変換
+    return pack(
+        "L A" . self::USERNAME_SIZE . " A" . self::EMAIL_SIZE,
+        $source->id,
+        str_pad($source->username, self::USERNAME_SIZE, "\0"),
+        str_pad($source->email, self::EMAIL_SIZE, "\0")
+    );
+}
+
+function deserialize_row(string $source): Row {
+    $data = unpack("Lid/A" . self::COLUMN_USERNAME_SIZE . "username/A" . self::COLUMN_EMAIL_SIZE . "email", $source);
+    return new Row($data['id'], rtrim($data['username'], "\0"), rtrim($data['email'], "\0"));
 }
 
 $inputBuffer = new InputBuffer();
