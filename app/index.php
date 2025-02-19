@@ -114,18 +114,12 @@ function execute_statement(Statement $statement, Table $table) {
 }
 
 function serialize_row(Row $source) {
-    // pack を使い、バイナリデータに変換
-    return pack(
-        "LA" . USERNAME_SIZE . "A" . EMAIL_SIZE,
-        $source->id,
-        str_pad($source->username, USERNAME_SIZE, "\0"),
-        str_pad($source->email, EMAIL_SIZE, "\0")
-    );
+    serialize($source);
 }
 
 function deserialize_row(string $source): Row {
-    $data = unpack("Lid/A" . USERNAME_SIZE . "username/A" . EMAIL_SIZE . "email", $source);
-    return new Row($data['id'], rtrim($data['username'], "\0"), rtrim($data['email'], "\0"));
+    $data = unserialize($source);
+    return new Row($data->id, $data->username, $data->email);
 }
 
 function row_slot(Table $table, int $row_num): int {
@@ -147,6 +141,8 @@ function execute_insert(Statement $statement, Table $table): PrepareResult {
     }
 
     $serialized_row = serialize_row($statement->row);
+    echo "insert";
+    echo $serialized_row;
     $table->pages[intdiv($table->num_rows, ROWS_PER_PAGE)][$table->num_rows % ROWS_PER_PAGE] = $serialized_row;
     $table->num_rows += 1;
     return PrepareResult::PREPARE_EXECUTE_SUCCESS;
@@ -154,7 +150,10 @@ function execute_insert(Statement $statement, Table $table): PrepareResult {
 
 function execute_select(Table $table) {
     for ($i = 0; $i < $table->num_rows; $i++) {
-        $row = deserialize_row(row_slot($table, $i));
+        $rowIndex = row_slot($table, $i);
+        echo "rowIndex: {$rowIndex}\n";
+        var_dump($table->pages);
+        $row = deserialize_row($table->pages[$rowIndex]);
         echo "{$row->id} {$row->username} {$row->email}\n";
     }
     PrepareResult::PREPARE_EXECUTE_SUCCESS;
@@ -191,6 +190,7 @@ while (true) {
         default:
             break;
     }
+    var_dump($table->pages);
 
 
     execute_statement($statement,$table);
