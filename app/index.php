@@ -87,7 +87,8 @@ class Table {
     private const TABLE_MAX_ROWS = self::ROWS_PER_PAGE * self::TABLE_MAX_PAGES;
 
     public function insert(Row $row): void {
-        if ($this->numRows >= self::TABLE_MAX_ROWS) {
+        $newRows = $this->numRows + 1;
+        if ($newRows  >= self::TABLE_MAX_ROWS) {
             throw new Exception('Table is full');
         }
         [$pageIndex, $rowIndex] = $this->rowSlot();
@@ -117,8 +118,8 @@ class Table {
     }
 
     private function rowSlot(): array {
-        $pageIndex = intdiv($this->numRows, self::ROWS_PER_PAGE);
-        $rowIndex = $this->numRows % self::ROWS_PER_PAGE;
+        $pageIndex = intdiv($this->numRows, (int)self::ROWS_PER_PAGE);
+        $rowIndex = $this->numRows % (int)self::ROWS_PER_PAGE;
         return [$pageIndex, $rowIndex];
     }
 

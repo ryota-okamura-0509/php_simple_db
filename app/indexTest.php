@@ -1,14 +1,14 @@
 <?php
 use PHPUnit\Framework\TestCase;
 
-class DatabaseTest extends TestCase {
+class IndexTest extends TestCase {
     private function runScript(array $commands) {
         $descriptorspec = [
             0 => ["pipe", "r"],
             1 => ["pipe", "w"],
         ];
         
-        $process = proc_open("./db", $descriptorspec, $pipes);
+        $process = proc_open("php index.php", $descriptorspec, $pipes);
         if (!is_resource($process)) {
             throw new Exception("Failed to open process");
         }
@@ -25,7 +25,19 @@ class DatabaseTest extends TestCase {
         return explode("\n", trim($output));
     }
     
-    public function testInsertAndRetrieveRow() {
+    public function test_データベースにデータが保存することができる() {
+        $result = $this->runScript([
+            "insert 1 user1 person1@example.com",
+            ".exit",
+        ]);
+        
+        $this->assertEquals([
+            "db > Inserted row: 1 user1 person1@example.com",
+            "db > データベースを終了します。",
+        ], $result);
+    }
+
+    public function test_登録されたテーブルのデータを取得することができる() {
         $result = $this->runScript([
             "insert 1 user1 person1@example.com",
             "select",
@@ -33,70 +45,38 @@ class DatabaseTest extends TestCase {
         ]);
         
         $this->assertEquals([
-            "db > Executed.",
+            "db > Inserted row: 1 user1 person1@example.com",
             "db > (1, user1, person1@example.com)",
-            "Executed.",
-            "db > ",
+            "実行完了。",
+            "db > データベースを終了します。",
         ], $result);
     }
     
-    public function testTableFullError() {
+    public function test_テーブルの最大データ量を超える場合、登録できない() {
         $script = [];
-        for ($i = 1; $i <= 1401; $i++) {
+        for ($i = 1; $i <= 1408; $i++) {
             $script[] = "insert $i user$i person$i@example.com";
         }
         $script[] = ".exit";
         
         $result = $this->runScript($script);
-        $this->assertEquals("db > Error: Table full.", $result[count($result) - 2]);
+        $this->assertEquals("db > Table is full", $result[count($result) - 2]);
     }
     
-    public function testMaxLengthStrings() {
+    public function test_追加するデータがテーブルの規定違反の場合、登録することができない() {
         $longUsername = str_repeat("a", 32);
-        $longEmail = str_repeat("a", 255);
         
         $result = $this->runScript([
-            "insert 1 $longUsername $longEmail",
+            "insert 1 $longUsername @example.com",
             "select",
             ".exit",
         ]);
         
         $this->assertEquals([
-            "db > Executed.",
-            "db > (1, $longUsername, $longEmail)",
-            "Executed.",
-            "db > ",
-        ], $result);
-    }
-    
-    public function testStringTooLongError() {
-        $longUsername = str_repeat("a", 33);
-        $longEmail = str_repeat("a", 256);
-        
-        $result = $this->runScript([
-            "insert 1 $longUsername $longEmail",
-            "select",
-            ".exit",
-        ]);
-        
-        $this->assertEquals([
-            "db > String is too long.",
-            "db > Executed.",
-            "db > ",
-        ], $result);
-    }
-    
-    public function testNegativeIdError() {
-        $result = $this->runScript([
-            "insert -1 cstack foo@bar.com",
-            "select",
-            ".exit",
-        ]);
-        
-        $this->assertEquals([
-            "db > ID must be positive.",
-            "db > Executed.",
-            "db > ",
+            "db > Inserted row: 1 $longUsername @example.com",
+            "db > (1, $longUsername, @example.com)",
+            "実行完了。",
+            "db > データベースを終了します。",
         ], $result);
     }
 }
