@@ -1,7 +1,5 @@
 <?php
 
-
-
 class InputBuffer {
     public string $buffer = "";
 
@@ -75,6 +73,12 @@ class Row {
             throw new Exception('Email must be 255 characters or less');
         }
     }
+}
+
+class Pager {
+    public int $fileDescriptor = 0;
+    public int $fileLength = 0;
+    public array $pages = [];
 }
 
 class Table {
