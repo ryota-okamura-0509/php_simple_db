@@ -3,7 +3,7 @@ services:
   php_service:
     container_name: php_simple_db
     build:
-      context: './docker/'
+      context: './app/'
     volumes:
       - './app:/var/www/html'
     ports:
