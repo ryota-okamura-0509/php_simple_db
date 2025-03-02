@@ -13,6 +13,12 @@ class InputBuffer {
     }
 }
 
+class Cursor {
+    public Table $table;
+    public int $rowNum = 0;
+    public bool $endOfTable = false;
+}
+
 enum PrepareResult {
     case PREPARE_SUCCESS;
     case PREPARE_UNRECOGNIZED_STATEMENT;
@@ -115,7 +121,30 @@ class Table {
         return $output . "実行完了。\n";
     }
 
+    public function start(): Cursor {
+        $cursor = new Cursor();
+        $cursor->table = $this;
+        $cursor->rowNum = $this->numRows;
+        $cursor->endOfTable = true;
+        return $cursor;
+    }
+
+    public function end(): Cursor {
+        $cursor = new Cursor();
+        $cursor->table = $this;
+        $cursor->rowNum = $this->numRows;
+        $cursor->endOfTable = true;
+        return $cursor;
+    }
+
     private function rowSlot(): array {
+        $pageIndex = intdiv($this->numRows, (int)self::ROWS_PER_PAGE);
+        $rowIndex = $this->numRows % (int)self::ROWS_PER_PAGE;
+        return [$pageIndex, $rowIndex];
+    }
+
+    private function cursorValue(Cursor $cursor): array {
+        $rowNum = $cursor->rowNum;
         $pageIndex = intdiv($this->numRows, (int)self::ROWS_PER_PAGE);
         $rowIndex = $this->numRows % (int)self::ROWS_PER_PAGE;
         return [$pageIndex, $rowIndex];
