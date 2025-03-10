@@ -98,7 +98,7 @@ class Cursor {
             return null;
         }
         [$pageIndex, $rowIndex] = $this->table->rowSlot($this->rowNumber);
-        $page = $this->table->getPage($pageIndex);
+        $page = $this->table->getPage(0);
         $offset = $rowIndex * Table::ROW_SIZE;
         $data = substr($page, $offset, Table::ROW_SIZE);
         return $this->table->deserializeRow($data);
@@ -149,7 +149,6 @@ class Pager {
             $pages[$i] = null;
         }
         $pages[0] = fread($fileDescriptor, Table::PAGE_SIZE);
-        var_dump($pages);
         // ファイルの長さを取得
         fseek($fileDescriptor, 0, SEEK_END);
         $fileLength = ftell($fileDescriptor);
@@ -253,8 +252,8 @@ class Table {
                 $numPages++;
             }
             if($pageNumber <= $numPages) {
-                fseek($this->file, $numPages * self::PAGE_SIZE);
-                $this->pager->pages[$numPages] = fread($this->file, self::PAGE_SIZE);
+                fseek($this->pager->fileDescriptor, $numPages * self::PAGE_SIZE);
+                $this->pager->pages[$numPages] = fread($this->pager->fileDescriptor, self::PAGE_SIZE);
             }
         }
         return $this->pager->pages[$pageNumber];
