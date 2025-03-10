@@ -75,6 +75,55 @@ class Row {
     }
 }
 
+class Cursor {
+    private Table $table;
+    private int $rowNumber;
+    private bool $endOfTable;
+
+    public function __construct(Table $table, int $rowNumber) {
+        $this->table = $table;
+        $this->rowNumber = $rowNumber;
+        $this->endOfTable = $rowNumber >= $table->numRows;
+    }
+
+    public function advance(): void {
+        $this->rowNumber++;
+        if ($this->rowNumber >= $this->table->numRows) {
+            $this->endOfTable = true;
+        }
+    }
+
+    public function getValue(): ?Row {
+        if ($this->endOfTable) {
+            return null;
+        }
+        [$pageIndex, $rowIndex] = $this->table->rowSlot($this->rowNumber);
+        $page = $this->table->getPage(0);
+        $offset = $rowIndex * Table::ROW_SIZE;
+        $data = substr($page, $offset, Table::ROW_SIZE);
+        return $this->table->deserializeRow($data);
+    }
+
+    public function setValue(Row $row): void {
+        [$pageIndex, $rowIndex] = $this->table->rowSlot($this->rowNumber);
+        if (!isset($this->table->pager->pages[$pageIndex])) {
+            $this->table->pager->pages[$pageIndex] = str_repeat("\0", Table::PAGE_SIZE);
+        }
+        $serializedRow = $this->table->serializeRow($row);
+        $offset = $rowIndex * Table::ROW_SIZE;
+        $this->table->pager->pages[$pageIndex] = substr_replace(
+            $this->table->pager->pages[$pageIndex],
+            $serializedRow,
+            $offset,
+            Table::ROW_SIZE
+        );
+    }
+
+    public function isEnd(): bool {
+        return $this->endOfTable;
+    }
+}
+
 class Pager {
     public $fileDescriptor;
     public $fileLength;
@@ -100,7 +149,6 @@ class Pager {
             $pages[$i] = null;
         }
         $pages[0] = fread($fileDescriptor, Table::PAGE_SIZE);
-        var_dump($pages);
         // ファイルの長さを取得
         fseek($fileDescriptor, 0, SEEK_END);
         $fileLength = ftell($fileDescriptor);
@@ -141,7 +189,9 @@ class Table {
 
     public function __construct(Pager $pager) {
         $this->pager = $pager;
+        var_dump($pager);
         $this->numRows = $pager->fileLength / (int)self::ROW_SIZE;
+        echo "numRows: $this->numRows\n";
     }
 
     public function insert(Row $row): void {
@@ -150,43 +200,44 @@ class Table {
         if ($newRows  >= self::TABLE_MAX_ROWS) {
             throw new Exception('Table is full');
         }
-        [$pageIndex, $rowIndex] = $this->rowSlot();
-        if (!isset($this->pager->pages[$pageIndex])) {
-            $this->pager->pages[$pageIndex] = str_repeat("\0", self::PAGE_SIZE); // 4KBの空データを確保;
-        }
-
-        $serializedRow = $this->serializeRow($row);
-        $offset = $rowIndex  * self::ROW_SIZE;
-        $this->pager->pages[$pageIndex] = substr_replace($this->pager->pages[$pageIndex], $serializedRow, $offset, self::ROW_SIZE);
+        $cursor = new Cursor($this, $this->numRows);
+        $cursor->setValue($row);
         $this->numRows++;
         echo "Inserted row: $row\n";
     }
 
     public function select(): string {
         $output = '';
-        foreach ($this->pager->pages as $page) {
-            for ($i = 0; $i < (int)self::ROWS_PER_PAGE; $i++) {
-                $offset = $i * (int)self::ROW_SIZE;
-                $data = substr((string)$page, (int)$offset, (int)self::ROW_SIZE);
-                if (trim($data) !== "") {
-                    $output .= $this->deserializeRow($data) . "\n";
-                }
+        $cursor = new Cursor($this, 0);
+        while (!$cursor->isEnd()) {
+            $row = $cursor->getValue();
+            if ($row !== null) {
+                $output .= $row . "\n";
             }
+            $cursor->advance();
         }
         return $output . "実行完了。\n";
     }
 
-    private function rowSlot(): array {
+    public function rowSlot(): array {
         $pageIndex = intdiv($this->numRows, (int)self::ROWS_PER_PAGE);
         $rowIndex = $this->numRows % (int)self::ROWS_PER_PAGE;
         return [$pageIndex, $rowIndex];
     }
 
-    private function serializeRow(Row $row): string {
+    private function cursorValue(Cursor $cursor): int {
+        $pageIndex = intdiv($cursor->rowNum, (int)self::ROWS_PER_PAGE);
+        $rowIndex = $cursor->rowNum % (int)self::ROWS_PER_PAGE;
+        $page = $this->pager->getPage($pageIndex);
+        $offset = $rowIndex * (int)self::ROW_SIZE;
+        return $offset;
+    }
+
+    public function serializeRow(Row $row): string {
         return serialize($row);
     }
 
-    private function deserializeRow(string $data): Row {
+    public function deserializeRow(string $data): Row {
         return unserialize($data);
     }
 
@@ -201,8 +252,8 @@ class Table {
                 $numPages++;
             }
             if($pageNumber <= $numPages) {
-                fseek($this->file, $numPages * self::PAGE_SIZE);
-                $this->pager->pages[$numPages] = fread($this->file, self::PAGE_SIZE);
+                fseek($this->pager->fileDescriptor, $numPages * self::PAGE_SIZE);
+                $this->pager->pages[$numPages] = fread($this->pager->fileDescriptor, self::PAGE_SIZE);
             }
         }
         return $this->pager->pages[$pageNumber];
@@ -299,15 +350,15 @@ class Database {
     private function metaCommandHandler(string $command): MetaCommandResult {
         return match ($command) {
             '.exit' => self::exitCommand(),
-
             default => MetaCommandResult::META_COMMAND_UNRECOGNIZED_COMMAND,
         };
     }
 
-    private function exitCommand(): void{
+    private function exitCommand(): MetaCommandResult {
         $this->close();
         echo "データベースを終了します。\n";
         exit(0);
+        return MetaCommandResult::META_COMMAND_SUCCESS;
     }
 }
 
