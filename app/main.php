@@ -1,12 +1,14 @@
 <?php
 
 require_once "Pager.php";
+require_once "TableManager.php";
 
 class SimpleDB {
     private Pager $pager;
 
     public function __construct(string $filename) {
         $this->pager = new Pager($filename);
+        $this->tableManager = new TableManager();
     }
 
     public function execute(string $input): void {
@@ -15,27 +17,41 @@ class SimpleDB {
         if ($input === "exit") {
             echo "Bye!\n";
             exit(0);
-        } elseif (str_starts_with($input, "save ")) {
-            $parts = explode(" ", $input, 3);
-            if (count($parts) < 3) {
-                echo "Usage: save <page_num> <data>\n";
-                return;
-            }
-            $pageNum = (int) $parts[1];
-            $data = $parts[2];
-            $this->pager->writePage($pageNum, $data);
-            echo "Saved to page $pageNum\n";
-        } elseif (str_starts_with($input, "load ")) {
-            $parts = explode(" ", $input, 2);
-            if (count($parts) < 2) {
-                echo "Usage: load <page_num>\n";
-                return;
-            }
-            $pageNum = (int) $parts[1];
-            $data = $this->pager->readPage($pageNum);
-            echo "Page $pageNum: " . trim($data) . "\n";
+        } elseif (str_starts_with($input, "CREATE TABLE")) {
+            $this->handleCreateTable($input);
+        } elseif ($input === "SHOW TABLES") {
+            $this->handleShowTables();
         } else {
             echo "Unknown command: $input\n";
+        }
+    }
+
+    private function handleCreateTable(string $input): void {
+        // 例: CREATE TABLE users (id INT, name TEXT);
+        if (!preg_match('/CREATE TABLE (\w+) \((.+)\);?/', $input, $matches)) {
+            echo "Invalid CREATE TABLE syntax.\n";
+            return;
+        }
+
+        $tableName = $matches[1];
+        $columns = explode(",", trim($matches[2]));
+
+        try {
+            $this->tableManager->createTable($tableName, $columns);
+            echo "Table '$tableName' created.\n";
+        } catch (Exception $e) {
+            echo "Error: " . $e->getMessage() . "\n";
+        }
+    }
+
+    private function handleShowTables(): void {
+        $tables = $this->tableManager->getTables();
+        if (empty($tables)) {
+            echo "No tables found.\n";
+        } else {
+            foreach ($tables as $name => $info) {
+                echo "$name (" . implode(", ", $info["columns"]) . ")\n";
+            }
         }
     }
 }
