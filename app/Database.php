@@ -2,15 +2,18 @@
 
 require_once "Pager.php";
 require_once "TableManager.php";
+require_once "IndexManager.php";
 
 
 class Database {
     private Pager $pager;
     private TableManager $tableManager;
+    private IndexManager $indexManager;
 
     public function __construct(string $dbFile) {
         $this->pager = new Pager($dbFile);
         $this->tableManager = new TableManager($this->pager);
+        $this->indexManager = new IndexManager();
     }
 
     public function execute(string $input): void {
@@ -41,6 +44,8 @@ class Database {
         $pages = $tables[$table]["pages"];
         $lastPage = end($pages);
         $pageData = $this->pager->readPage((int)$lastPage);
+        $key = $values['id'];
+        $offset = strlen(trim($pageData));
 
         if (strlen(trim($pageData)) + strlen(json_encode($values)) >= 4096) {
             $newPage = $this->pager->allocateNewPage();
@@ -48,7 +53,7 @@ class Database {
             $this->updateMetaFile($tables);
             $lastPage = $newPage;
         }
-
+        $this->indexManager->updateIndex("users", $key, $lastPage, $offset);
         $newData = trim($pageData) . json_encode($values) . "|";
         $this->pager->writePage((int)$lastPage, $newData);
     }
@@ -71,6 +76,30 @@ class Database {
             }
         }
         return $result;
+    }
+
+    public function searchWithIndex(string $table, string $key): array | null {
+        $indexFile = $table . ".idx";
+        if (!file_exists($indexFile)) {
+            throw new Exception("Index file not found.");
+        }
+
+        // インデックスをロード
+        $index = json_decode(file_get_contents($indexFile), true);
+        if (!isset($index[$key])) {
+            throw new Exception("Key not found.");
+        }
+
+        [$page, $offset] = $index[$key];
+        $pageData = $this->pager->readPage($page);
+        $lines = explode("|", trim($pageData));
+        foreach ($lines as $line) {
+            $record = json_decode($line, true);
+            if ($record && isset($record["id"]) && $record["id"] == $key) {
+                return $record;
+            }
+        }
+        return null;
     }
 
     private function handleInsert(string $input): void {
