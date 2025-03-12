@@ -1,29 +1,36 @@
 <?php
 
 class Pager {
-    private string $filename;
-    private int $pageSize = 4096;
-    private $file;
+    private string $dbFile;
 
-    public function __construct(string $filename) {
-        $this->filename = $filename;
-        $this->file = fopen($filename, 'c+b'); // 読み書き用に開く（なければ作成）
-    }
+    public function __construct(string $dbFile) {
+        $this->dbFile = $dbFile;
 
-    public function readPage(int $pageNum): string {
-        fseek($this->file, $pageNum * $this->pageSize);
-        return fread($this->file, $this->pageSize) ?: str_repeat("\0", $this->pageSize);
-    }
-
-    public function writePage(int $pageNum, string $data): void {
-        if (strlen($data) > $this->pageSize) {
-            throw new Exception("データがページサイズを超えています");
+        // ファイルが存在しない場合は作成
+        if (!file_exists($dbFile)) {
+            file_put_contents($this->dbFile, str_repeat("\0", 4096)); // 最初のページを確保
         }
-        fseek($this->file, $pageNum * $this->pageSize);
-        fwrite($this->file, str_pad($data, $this->pageSize, "\0"));
     }
 
-    public function close(): void {
-        fclose($this->file);
+    public function readPage(int $pageNumber): string {
+        $file = fopen($this->dbFile, 'r');
+        fseek($file, $pageNumber * 4096);
+        $data = fread($file, 4096);
+        fclose($file);
+        return $data;
+    }
+
+    public function writePage(int $pageNumber, string $data): void {
+        $file = fopen($this->dbFile, 'r+');
+        fseek($file, $pageNumber * 4096);
+        fwrite($file, str_pad($data, 4096, "\0")); // 4KB に揃える
+        fclose($file);
+    }
+
+    public function allocateNewPage(): int {
+        $size = filesize($this->dbFile);
+        $newPageNumber = $size / 4096;
+        file_put_contents($this->dbFile, str_repeat("\0", 4096), FILE_APPEND); // 新しいページを確保
+        return $newPageNumber;
     }
 }
